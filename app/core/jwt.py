@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import uuid
 
 from jose import jwt
 
@@ -42,3 +43,29 @@ def create_refresh_token(subject: str) -> str:
 
 def decode_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, PUBLIC_KEY, algorithms=[settings.JWT_ALGORITHM])
+
+def create_access_token(subject: str, role: str) -> str:
+    expire = datetime.now(tz=timezone.utc) + timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    payload = {
+        "sub": subject,
+        "role": role,
+        "exp": expire,
+        "type": "access",
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, PRIVATE_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_refresh_token(subject: str) -> str:
+    expire = datetime.now(tz=timezone.utc) + timedelta(
+        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    payload = {
+        "sub": subject,
+        "exp": expire,
+        "type": "refresh",
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, PRIVATE_KEY, algorithm=settings.JWT_ALGORITHM)

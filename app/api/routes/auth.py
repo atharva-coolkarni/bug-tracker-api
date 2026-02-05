@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.api.schemas.auth import (
@@ -7,10 +8,13 @@ from app.api.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
-from app.core.jwt import create_access_token, create_refresh_token
+from app.core.jwt import create_access_token, create_refresh_token, decode_token
 from app.core.security import hash_password, verify_password
 from app.db.deps import get_db
 from app.models.user import User
+from app.models.token_blacklist import TokenBlacklist
+
+security = HTTPBearer()
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -72,3 +76,57 @@ def get_me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         role=current_user.role,
     )
+    
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    token = credentials.credentials
+
+    try:
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+
+    # blacklist old refresh token (rotation)
+    db.add(
+        TokenBlacklist(
+            jti=payload["jti"],
+            token_type="refresh",
+        )
+    )
+    db.commit()
+
+    new_access = create_access_token(
+        subject=payload["sub"],
+        role=db.get(User, payload["sub"]).role,
+    )
+    new_refresh = create_refresh_token(subject=payload["sub"])
+
+    return TokenResponse(
+        access_token=new_access,
+        refresh_token=new_refresh,
+    )
+
+@router.post("/logout")
+def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    token = credentials.credentials
+    payload = decode_token(token)
+
+    db.add(
+        TokenBlacklist(
+            jti=payload["jti"],
+            token_type=payload["type"],
+        )
+    )
+    db.commit()
+
+    return {"detail": "Successfully logged out"}
+

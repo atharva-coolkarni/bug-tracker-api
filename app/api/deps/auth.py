@@ -6,8 +6,11 @@ from app.db.deps import get_db
 from app.models.user import User
 from sqlalchemy.orm import Session
 
+from app.models.token_blacklist import TokenBlacklist
+
 
 security = HTTPBearer()
+
 
 
 def get_current_user(
@@ -28,6 +31,13 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type",
+        )
+
+    jti = payload.get("jti")
+    if db.query(TokenBlacklist).filter(TokenBlacklist.jti == jti).first():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
         )
 
     user = db.get(User, payload["sub"])
