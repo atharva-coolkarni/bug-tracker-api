@@ -1,1 +1,9 @@
-keys/jwt_private.pem
+# env
+.env
+
+# python cache
+__pycache__/
+*.pyc
+
+# keys
+keys/
